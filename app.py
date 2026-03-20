@@ -102,4 +102,9 @@ if not st.session_state.fuel_df.empty:
         rev_df = st.session_state.fuel_df.iloc[::-1]
         for idx, row in rev_df.iterrows():
             with st.expander(f"📍 {row['일시']} | {row['금액(원)']}원"):
-                st.write(f"단가: {row['단가(
+                st.write(f"단가: {row['단가(원)']}원 / 주유량: {row['주유량(L)']}L")
+                if st.button(f"삭제", key=f"del_{idx}"):
+                    st.session_state.fuel_df = st.session_state.fuel_df.drop(idx).reset_index(drop=True)
+                    st.rerun()
+else:
+    st.info("기록된 데이터가 없습니다.")
