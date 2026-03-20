@@ -1,79 +1,83 @@
 import streamlit as st
+import pandas as pd
+from datetime import datetime
 
-# 1. 페이지 설정 (모바일 브라우저 최적화)
-st.set_page_config(
-    page_title="스마트 주유 계산기",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+# 1. 페이지 설정 및 상태 초기화
+st.set_page_config(page_title="내 차 주유 가계부", layout="centered")
 
-# 2. 모바일 맞춤형 디자인 (CSS)
+if 'fuel_history' not in st.session_state:
+    # 예시 데이터 초기값 (리스트 형태)
+    st.session_state.fuel_history = pd.DataFrame(columns=['날짜', '단가(원)', '금액(원)', '주유량(L)'])
+
+# 2. 모바일 최적화 스타일 (CSS)
 st.markdown("""
     <style>
-    /* 전체 배경 및 여백 조절 */
-    .main { background-color: #f9f9f9; }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    
-    /* 입력창 라벨 스타일 */
-    .stNumberInput label { font-size: 1.1rem !important; font-weight: bold; color: #333; }
-    
-    /* 결과 박스 디자인 */
-    .result-container {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 30px 20px;
-        border-radius: 20px;
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 10px; height: 3em; background-color: #4CAF50; color: white; }
+    .result-box {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 15px;
         text-align: center;
-        margin-top: 30px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        border: 2px solid #4CAF50;
+        margin-bottom: 20px;
     }
-    .result-label { font-size: 1.2rem; opacity: 0.9; margin-bottom: 10px; }
-    .result-value { font-size: 3rem; font-weight: 800; }
-    .result-unit { font-size: 1.5rem; margin-left: 5px; }
+    .result-value { font-size: 2.5rem; font-weight: bold; color: #2e7d32; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⛽ 주유량 계산기")
-st.write("단가와 금액을 입력하면 주유량이 자동 계산됩니다.")
+st.title("⛽ 주유 기록기")
 
-# 3. 입력 섹션 (세로로 배치하여 터치 편의성 증대)
-# 단가 입력
-input_price = st.number_input(
-    "💰 리터당 단가 (원)", 
-    min_value=0, 
-    value=1650, 
-    step=10,
-    format="%d"
-)
+# 3. 입력 섹션
+with st.container():
+    col1, col2 = st.columns(2)
+    with col1:
+        price = st.number_input("리터당 단가(원)", min_value=0, value=1650, step=10)
+    with col2:
+        money = st.number_input("주유 금액(원)", min_value=0, value=50000, step=1000)
 
-# 주유 금액 입력
-input_money = st.number_input(
-    "💵 주유할 금액 (원)", 
-    min_value=0, 
-    value=50000, 
-    step=1000,
-    format="%d"
-)
+    # 주유량 계산
+    fuel_amount = round(money / price, 2) if price > 0 else 0.0
 
-# 4. 계산 로직
-if input_price > 0:
-    total_liters = input_money / input_price
-else:
-    total_liters = 0.0
-
-# 5. 결과 표시 (모바일 강조형)
-st.markdown(f"""
-    <div class="result-container">
-        <div class="result-label">예상 주유량</div>
-        <div class="result-value">
-            {total_liters:.2f}<span class="result-unit">L</span>
+    st.markdown(f"""
+        <div class="result-box">
+            <div style="color: #666;">계산된 주유량</div>
+            <div class="result-value">{fuel_amount} L</div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-# 6. 하단 부가 기능 (인증키 등)
-st.markdown("---")
-with st.expander("🔑 시스템 정보"):
-    st.info(f"현재 설정 단가: {input_price:,}원 / 주유 금액: {input_money:,}원")
-    st.code("인증키: Tt8x4uYTSKufMeLmE-ir3Q")
-    st.caption("v1.0.0 | Mobile Optimized")
+    # 주유 기록 버튼
+    if st.button("📝 현재 주유 내역 저장"):
+        new_data = {
+            '날짜': datetime.now().strftime("%m-%d %H:%M"),
+            '단가(원)': price,
+            '금액(원)': money,
+            '주유량(L)': fuel_amount
+        }
+        st.session_state.fuel_history = pd.concat([st.session_state.fuel_history, pd.DataFrame([new_data])], ignore_index=True)
+        st.success("기록이 저장되었습니다!")
+
+# 4. 분석 및 그래프 섹션
+if not st.session_state.fuel_history.empty:
+    st.markdown("---")
+    tab1, tab2 = st.tabs(["📊 주유 추이 그래프", "📜 상세 내역"])
+
+    with tab1:
+        st.subheader("최근 주유량 변동")
+        # 선형 그래프 표시 (최근 기록 기준)
+        st.line_chart(st.session_state.fuel_history.set_index('날짜')['주유량(L)'], use_container_width=True)
+        
+        st.subheader("주유 금액 합계")
+        total_spent = st.session_state.fuel_history['금액(원)'].sum()
+        st.info(f"총 주유 누적 금액: {total_spent:,} 원")
+
+    with tab2:
+        st.subheader("전체 주유 로그")
+        # 모바일에서 보기 편하도록 최신순으로 정렬하여 표시
+        st.dataframe(st.session_state.fuel_history.iloc[::-1], use_container_width=True, hide_index=True)
+        
+        if st.button("❌ 전체 기록 삭제"):
+            st.session_state.fuel_history = pd.DataFrame(columns=['날짜', '단가(원)', '금액(원)', '주유량(L)'])
+            st.rerun()
+else:
+    st.info("아직 저장된 주유 내역이 없습니다. 위 버튼을 눌러 첫 기록을 남겨보세요!")
