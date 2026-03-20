@@ -41,7 +41,7 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-st.title("⛽ 주유 및 주행 기록기")
+st.title("⛽ 48러 9208 주유기록")
 
 # 4. 입력 섹션
 with st.container():
