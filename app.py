@@ -5,98 +5,102 @@ import os
 import re
 from datetime import datetime
 
-# 1. 전체 데이터 로드 및 파싱 (제공해주신 모든 데이터 포함)
+# 1. 전체 데이터 로드 (여기에 처음에 주신 긴 텍스트를 모두 붙여넣으세요)
 RAW_DATA = """
 20210511  50897  58.43L  588.0k  871
-20210525  50216  57.67L  592.9k  871
-... (중략: 여기에 처음 주신 100여 개의 데이터를 모두 복사해서 넣으세요) ...
-20260310  53183 58.060L 506.1k 916 oil
+... (중략: 모든 데이터를 여기에 복사하세요) ...
 20260314  19182 21.629L 184.0k 916 oil
 """
 
 DB_FILE = 'gas_history.csv'
 
-def parse_raw_text(text):
+def parse_all_records(text):
     data_list = []
+    # 한 줄씩 읽어서 숫자와 텍스트를 정밀하게 추출
     lines = text.strip().split('\n')
+    
     for line in lines:
-        # 공백이 여러 개인 경우를 대비해 정규식 사용
-        parts = re.split(r'\s+', line.strip())
-        if len(parts) >= 5:
+        line = line.strip()
+        if not line: continue
+        
+        # 정규식으로 숫자 및 소수점만 추출 (날짜, 금액, 주유량, 주행거리, 단가 순서)
+        # 문자열 내에서 숫자 형태(소수점 포함)를 모두 찾아 리스트로 만듭니다.
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", line)
+        
+        if len(numbers) >= 5:
             try:
-                # 날짜 처리
-                date_val = pd.to_datetime(parts[0], format='%Y%m%d')
-                # 주유량 숫자만 추출 (L 제거)
-                liters = float(re.sub(r'[lL]', '', parts[2]))
-                # 누적거리 숫자만 추출 (k, K 제거)
-                odo = float(re.sub(r'[kK]', '', parts[3]))
+                # 주유소 브랜드 추출 (영문자 조합)
+                station_match = re.search(r'[a-zA-Z]+[0-9]*$', line)
+                station = station_match.group() if station_match else "oil"
                 
                 data_list.append({
-                    '날짜': date_val,
-                    '금액': int(parts[1]),
-                    '주유량': liters,
-                    '누적거리': odo,
-                    '단가': int(parts[4]),
-                    '주유소': parts[5] if len(parts) > 5 else 'oil'
+                    '날짜': pd.to_datetime(numbers[0], format='%Y%m%d'),
+                    '금액': int(numbers[1]),
+                    '주유량': float(numbers[2]),
+                    '주행거리': float(numbers[3]),
+                    '단가': int(numbers[4]),
+                    '주유소': station.lower()
                 })
-            except Exception as e: continue
+            except: continue
+            
     return pd.DataFrame(data_list)
 
 def get_data():
-    if not os.path.exists(DB_FILE):
-        df = parse_raw_text(RAW_DATA)
-        df.to_csv(DB_FILE, index=False)
-    else:
-        df = pd.read_csv(DB_FILE)
-        df['날짜'] = pd.to_datetime(df['날짜'])
+    # 매번 최신 데이터를 확인하기 위해 텍스트 파싱을 우선합니다.
+    # 만약 파일 저장만 원하시면 아래 로직을 조정할 수 있습니다.
+    df = parse_all_records(RAW_DATA)
+    df = df.sort_values('날짜', ascending=True)
     return df
 
 # 2. 화면 구성
-st.set_page_config(page_title="월간 주유 대시보드", layout="wide")
-st.title("⛽ 월간 주유 관리 및 전체 데이터 현황")
+st.set_page_config(page_title="통합 주유 대시보드", layout="wide")
+st.title("🚗 전 기간 주유 데이터 분석 (2021-2026)")
 
 df = get_data()
-current_month = datetime.now().month
-current_year = datetime.now().year
 
-# 3. 상단 지표 (누적 -> 이번 달 기준)
-this_month_df = df[(df['날짜'].dt.year == current_year) & (df['날짜'].dt.month == current_month)]
+# 3. 상단 지표 (당월 현황)
+current_date = datetime.now()
+this_month_df = df[(df['날짜'].dt.year == current_date.year) & (df['날짜'].dt.month == current_date.month)]
 
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric(f"{current_month}월 총 지출", f"{this_month_df['금액'].sum():,}")
-with col2:
-    st.metric(f"{current_month}월 주유량", f"{this_month_df['주유량'].sum():.1f} L")
-with col3:
-    st.metric(f"{current_month}월 평균 단가", f"{int(this_month_df['단가'].mean()) if not this_month_df.empty else 0:,}")
-with col4:
-    st.metric(f"{current_month}월 주유 횟수", f"{len(this_month_df)}회")
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.metric("이번 달 지출", f"{int(this_month_df['금액'].sum()):,}원")
+with m2:
+    st.metric("총 기록 수", f"{len(df)}건")
+with m3:
+    st.metric("평균 단가", f"{int(df['단가'].mean()):,}원")
+with m4:
+    st.metric("총 주행거리", f"{df['주행거리'].max() - df['주행거리'].min():,.1f}km")
 
 st.divider()
 
 # 4. 차트 영역
-c1, c2 = st.columns([2, 1])
+c1, c2 = st.columns(2)
 
 with c1:
-    st.subheader("📅 월별 지출 추이 (전체 기간)")
-    # 월별로 데이터 그룹화
-    df_monthly = df.set_index('날짜').resample('M')['금액'].sum().reset_index()
-    fig1 = px.line(df_monthly, x='날짜', y='금액', markers=True, 
-                  labels={'금액': '주유비(원)', '날짜': '연도-월'})
+    st.subheader("📅 연도별 주유비 지출액")
+    df_yearly = df.copy()
+    df_yearly['연도'] = df_yearly['날짜'].dt.year
+    yearly_chart = df_yearly.groupby('연도')['금액'].sum().reset_index()
+    fig1 = px.bar(yearly_chart, x='연도', y='금액', text_auto=',.0f', color='연도')
     st.plotly_chart(fig1, use_container_width=True)
 
 with c2:
-    st.subheader("⛽ 주유소 선호도")
-    fig2 = px.pie(df, names='주유소', values='금액', hole=0.3)
+    st.subheader("📈 월별 주유비 변동 추이")
+    df_monthly = df.set_index('날짜').resample('M')['금액'].sum().reset_index()
+    fig2 = px.line(df_monthly, x='날짜', y='금액', markers=True)
     st.plotly_chart(fig2, use_container_width=True)
 
-# 5. 전체 데이터 표출 (정렬 및 필터 기능 포함)
-st.subheader("📜 전체 주유 기록 (최신순)")
-# 날짜 형식 예쁘게 출력
-display_df = df.sort_values('날짜', ascending=False).copy()
-display_df['날짜'] = display_df['날짜'].dt.strftime('%Y-%m-%d')
-st.dataframe(display_df, use_container_width=True, height=500)
+# 5. 전체 데이터 리스트 표출
+st.subheader("📜 전체 주유 기록 리스트")
+# 필터 기능 추가 (연도별)
+years = ["전체"] + sorted(df['날짜'].dt.year.unique().tolist(), reverse=True)
+selected_year = st.selectbox("조회 연도 선택", years)
 
-# 6. 데이터 내려받기 (백업용)
-csv = df.to_csv(index=False).encode('utf-8-sig')
-st.download_button("📥 전체 데이터 CSV 다운로드", csv, "gas_data_backup.csv", "text/csv")
+if selected_year != "전체":
+    display_df = df[df['날짜'].dt.year == selected_year].copy()
+else:
+    display_df = df.copy()
+
+display_df['날짜'] = display_df['날짜'].dt.strftime('%Y-%m-%d')
+st.dataframe(display_df.sort_values('날짜', ascending=False), use_container_width=True, height=600)
